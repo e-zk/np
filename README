@@ -1,0 +1,44 @@
+np
+===
+minimalistic 'now playing' music log.
+POST to add a song/album, GET to retreive log.
+
+usage
+------
+server:
+
+	$ go build -o np main.go
+	$ ./np -h # show help
+	$ ./np -l ":8080" -s "<secret>" -f "/var/np/log.txt"
+
+client:
+
+	$ curl -X POST -d "key=<secret>" \
+	       -d "artist=Charli XCX" \
+	       -d "track=Track 10" \
+	       https://127.0.0.1:8080/
+
+optionally you can add a url as well:
+
+	$ curl -X POST -d "key=<secret>" \
+	       -d "artist=KITTEN FOREVER" \
+	       -d "album=PRESSURE" \
+	       -d "url=https://kittenforeverforever.com/album/pressure"
+	       https://127.0.0.1:8080/
+
+headers:
+
+	header          description
+	----------------------------------------------------------
+	artist		(required) artist name
+	track		(required) track name
+	album		(   --   ) internally the same as 'track'
+	url		(optional) add a hyperlink to the log
+
+security
+---------
+the secret provides some minimal authentication. preferably it should
+be a randomly generated string, rather than a password/passphrase.
+use this service over https only please. otherwise your <secret> will almost
+definitely be leaked.
+
