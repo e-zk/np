@@ -35,7 +35,7 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if artist == "" || track == "" {
-		http.Error(w, "artist and track must be specified.", http.StatusBadRequest)
+		http.Error(w, "artist and either track or album must be specified.", http.StatusBadRequest)
 		return
 	}
 
