@@ -10,6 +10,7 @@ import (
 )
 
 var (
+	Bullet      = "&bullet;"
 	SuperSecret = "super secret key"
 	ListenOn    = ":8081"
 	TxtFile     = "./nowplaying.txt"
@@ -46,10 +47,10 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 	defer f.Close()
 
-	fmt.Fprintf(f, "%s - %s\t", artist, track)
+	fmt.Fprintf(f, "%s - %s", artist, track)
 
 	if url != "" {
-		fmt.Fprintf(f, "<sup><a href=\"%s\">&nearr;</a></sup>", url)
+		fmt.Fprintf(f, "\t%s", url)
 	}
 	fmt.Fprintf(f, "\n")
 
@@ -57,7 +58,6 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleGet(w http.ResponseWriter, r *http.Request) {
-
 	plaintext := false
 
 	// serve plaintext if requested
@@ -89,17 +89,54 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 
 	// print each line
 	for fs.Scan() {
+		txt := strings.Split(fs.Text(), "\t")
 		if plaintext {
-			txt := strings.Split(fs.Text(), "\t")
 			fmt.Fprintf(w, "%s\n", txt[0])
+		} else if len(txt) == 1 {
+			fmt.Fprintf(w, "%s %s\n", Bullet, txt[0])
 		} else {
-			fmt.Fprintf(w, "%s\n", fs.Text())
+			fmt.Fprintf(w, "%s %s [<a href=\"%s\">&Hat;</a>]\n", Bullet, txt[0], txt[1])
 		}
 	}
 
 	if !plaintext {
 		fmt.Fprintf(w, "</pre>\n")
 	}
+
+	return
+}
+
+func handleRss(w http.ResponseWriter, r *http.Request) {
+	// open text file
+	f, err := os.Open(TxtFile)
+	if err != nil {
+		http.Error(w, "could not open file", http.StatusInternalServerError)
+		return
+	}
+	defer f.Close()
+
+	fs := bufio.NewScanner(f)
+
+	w.Header().Set("Content-Type", "application/xml")
+
+	fmt.Fprintf(w, "<rss version=\"2.0\">\n")
+	fmt.Fprintf(w, "<channel>\n")
+	fmt.Fprintf(w, "<title>music log</title>\n")
+	fmt.Fprintf(w, "<description/>\n")
+
+	// print each line
+	for fs.Scan() {
+		txt := strings.Split(fs.Text(), "\t")
+		fmt.Fprintf(w, "<item>\n")
+		fmt.Fprintf(w, "<title>%s</title>\n", txt[0])
+		if len(txt) != 1 {
+			fmt.Fprintf(w, "<link>%s</link>\n", txt[1])
+		}
+		fmt.Fprintf(w, "</item>\n")
+	}
+
+	fmt.Fprintf(w, "</channel>\n")
+	fmt.Fprintf(w, "</rss>\n")
 
 	return
 }
@@ -118,6 +155,17 @@ func main() {
 		case "GET":
 			handleGet(w, r)
 		default:
+			// TODO return method not supported
+			http.NotFound(w, r)
+		}
+		return
+	})
+	mux.HandleFunc("/rss.xml", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case "GET":
+			handleRss(w, r)
+		default:
+			// TODO return method not supported
 			http.NotFound(w, r)
 		}
 		return
