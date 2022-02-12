@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"html"
 	"net/http"
 	"os"
 	"strings"
@@ -128,9 +129,9 @@ func handleRss(w http.ResponseWriter, r *http.Request) {
 	for fs.Scan() {
 		txt := strings.Split(fs.Text(), "\t")
 		fmt.Fprintf(w, "<item>\n")
-		fmt.Fprintf(w, "<title>%s</title>\n", txt[0])
+		fmt.Fprintf(w, "<title>%s</title>\n", html.EscapeString(txt[0]))
 		if len(txt) != 1 {
-			fmt.Fprintf(w, "<link>%s</link>\n", txt[1])
+			fmt.Fprintf(w, "<link>%s</link>\n", html.EscapeString(txt[1]))
 		}
 		fmt.Fprintf(w, "</item>\n")
 	}
