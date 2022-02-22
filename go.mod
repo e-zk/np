@@ -1,5 +1,5 @@
-module np
+module go.zakaria.org/np
 
-go 1.16
+go 1.17
 
 require github.com/mattn/go-sqlite3 v1.14.11
