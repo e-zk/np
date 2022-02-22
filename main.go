@@ -1,20 +1,25 @@
 package main
 
 import (
-	"bufio"
+	"database/sql"
 	"flag"
 	"fmt"
 	"html"
+	"log"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 var (
+	// TODO move these to a config file
 	Bullet      = "&bullet;"
 	SuperSecret = "super secret key"
 	ListenOn    = ":8081"
-	TxtFile     = "./nowplaying.txt"
+	TxtFile     = "./nowplaying.db"
+
+	repo *SQLiteRepo
 )
 
 func handlePost(w http.ResponseWriter, r *http.Request) {
@@ -25,35 +30,38 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		url    = r.PostFormValue("url")
 		secret = r.PostFormValue("key")
 	)
+	var title string
+	var kind int64
 
 	if secret != SuperSecret {
 		http.Error(w, "you are forbidden.", http.StatusBadRequest)
 		return
 	}
 
-	// album is the same as a track internally
 	if album != "" {
-		track = album
+		title = album
+		kind = 1
+	} else {
+		title = track
+		kind = 0
 	}
 
-	if artist == "" || track == "" {
+	if artist == "" || title == "" {
 		http.Error(w, "artist and either track or album must be specified.", http.StatusBadRequest)
 		return
 	}
 
-	f, err := os.OpenFile(TxtFile, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
+	e := Entry{
+		Artist:    artist,
+		Title:     title,
+		Type:      kind,
+		Link:      url,
+		DateAdded: time.Now().Format(time.RFC822),
+	}
+	_, err := repo.Add(e)
 	if err != nil {
-		http.Error(w, "could not open txt file.", http.StatusInternalServerError)
-		return
+		log.Fatalf("error adding: %v\n%v\n", e, err)
 	}
-	defer f.Close()
-
-	fmt.Fprintf(f, "%s - %s", artist, track)
-
-	if url != "" {
-		fmt.Fprintf(f, "\t%s", url)
-	}
-	fmt.Fprintf(f, "\n")
 
 	return
 }
@@ -74,50 +82,32 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	}
 
-	// open text file
-	f, err := os.Open(TxtFile)
+	a, err := repo.All()
 	if err != nil {
-		http.Error(w, "could not open file", http.StatusInternalServerError)
-		return
+		log.Fatalf("%v\n", err)
 	}
-	defer f.Close()
-
-	fs := bufio.NewScanner(f)
 
 	if !plaintext {
 		fmt.Fprintf(w, "<pre>\n")
 	}
 
-	// print each line
-	for fs.Scan() {
-		txt := strings.Split(fs.Text(), "\t")
-		if plaintext {
-			fmt.Fprintf(w, "%s\n", txt[0])
-		} else if len(txt) == 1 {
-			fmt.Fprintf(w, "%s %s\n", Bullet, txt[0])
-		} else {
-			fmt.Fprintf(w, "%s %s [<a href=\"%s\">&Hat;</a>]\n", Bullet, txt[0], txt[1])
+	for _, i := range a {
+		t, err := time.Parse(time.RFC822, i.DateAdded)
+		if err != nil {
+			panic(err)
 		}
+
+		fmt.Fprintf(w, "%s %s\t%s - %s\n", Bullet, t.Format("2006-01-02"), i.Artist, i.Title)
 	}
 
 	if !plaintext {
-		fmt.Fprintf(w, "</pre>\n")
+		fmt.Fprintf(w, "<pre>\n")
 	}
 
 	return
 }
 
 func handleRss(w http.ResponseWriter, r *http.Request) {
-	// open text file
-	f, err := os.Open(TxtFile)
-	if err != nil {
-		http.Error(w, "could not open file", http.StatusInternalServerError)
-		return
-	}
-	defer f.Close()
-
-	fs := bufio.NewScanner(f)
-
 	w.Header().Set("Content-Type", "application/xml")
 
 	fmt.Fprintf(w, "<rss version=\"2.0\">\n")
@@ -125,13 +115,17 @@ func handleRss(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "<title>music log</title>\n")
 	fmt.Fprintf(w, "<description/>\n")
 
-	// print each line
-	for fs.Scan() {
-		txt := strings.Split(fs.Text(), "\t")
+	all, err := repo.All()
+	if err != nil {
+		log.Fatalf("%v\n", err)
+	}
+
+	for _, e := range all {
 		fmt.Fprintf(w, "<item>\n")
-		fmt.Fprintf(w, "<title>%s</title>\n", html.EscapeString(txt[0]))
-		if len(txt) != 1 {
-			fmt.Fprintf(w, "<link>%s</link>\n", html.EscapeString(txt[1]))
+		fmt.Fprintf(w, "<title>%s - %s</title>\n", html.EscapeString(e.Artist), html.EscapeString(e.Title))
+		fmt.Fprintf(w, "<pubDate>%s</pubDate>\n", e.DateAdded)
+		if e.Link != "" {
+			fmt.Fprintf(w, "<link>%s</link>\n", html.EscapeString(e.Link))
 		}
 		fmt.Fprintf(w, "</item>\n")
 	}
@@ -142,12 +136,31 @@ func handleRss(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func main() {
+func init() {
 	flag.StringVar(&SuperSecret, "s", SuperSecret, "secret key")
 	flag.StringVar(&ListenOn, "l", ListenOn, "listen [address]:port")
 	flag.StringVar(&TxtFile, "f", TxtFile, "path to log file")
 	flag.Parse()
 
+	db, err := sql.Open("sqlite3", TxtFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		panic(err)
+	}
+
+	repo = NewSQLiteRepo(db)
+
+	if err := repo.Migrate(); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		panic(err)
+	}
+	if err := repo.Migrate(); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		panic(err)
+	}
+}
+
+func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
