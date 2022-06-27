@@ -14,7 +14,7 @@ import (
 
 var (
 	// TODO move these to a config file
-	Bullet      = "• "
+	Bullet      = "•"
 	SuperSecret = "super secret key"
 	ListenOn    = ":8081"
 	TxtFile     = "./nowplaying.db"
@@ -97,7 +97,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			panic(err)
 		}
 
-		fmt.Fprintf(w, "%s %s\t%s - %s\n", Bullet, t.Format("2006-01-02"), i.Artist, i.Title)
+		fmt.Fprintf(w, "%s\t%s\t%s - %s\n", Bullet, t.Format("2006-01-02"), i.Artist, i.Title)
 	}
 
 	if !plaintext {
