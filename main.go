@@ -14,7 +14,7 @@ import (
 
 var (
 	// TODO move these to a config file
-	Bullet      = "&bullet;"
+	Bullet      = "• "
 	SuperSecret = "super secret key"
 	ListenOn    = ":8081"
 	TxtFile     = "./nowplaying.db"
@@ -169,8 +169,8 @@ func main() {
 		case "GET":
 			handleGet(w, r)
 		default:
-			// TODO return method not supported
-			http.NotFound(w, r)
+			http.Error(w, "method not supported", http.StatusMethodNotAllowed)
+			return
 		}
 		return
 	})
@@ -179,8 +179,7 @@ func main() {
 		case "GET":
 			handleRss(w, r)
 		default:
-			// TODO return method not supported
-			http.NotFound(w, r)
+			http.Error(w, "method not supported", http.StatusMethodNotAllowed)
 		}
 		return
 	})
